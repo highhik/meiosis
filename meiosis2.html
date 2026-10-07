@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="ko">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>감수분열 염색체 이동 시뮬레이터</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800;900&amp;display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 100%;
+      color: #25332e;
+      font-family: "Noto Sans KR", sans-serif;
+    }
+    button { font-family: inherit; }
+    button:focus-visible, .chromosome-choice:focus-visible, .spindle-handle:focus-visible {
+      outline: 3px solid #74b99a;
+      outline-offset: 3px;
+    }
+    .app-shell {
+      width: 100%;
+      min-height: calc(100 * min(var(--vh, 1vh), 1vh));
+      padding: 18px 16px 32px;
+    }
+    .app-content { width: 100%; max-width: 1420px; margin: 0 auto; }
+    .layout-grid {
+      display: grid;
+      grid-template-columns: 190px minmax(550px, 1fr) 220px;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .card-base {
+      border: 1px solid #dbe3df;
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 4px 18px #0000000d;
+    }
+    .progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: #e9efec; }
+    .progress-bar { width: 0; height: 100%; border-radius: inherit; background: #3b956d; transition: width .35s ease; }
+    .step-row {
+      padding: 8px 9px; border-radius: 9px; background: #f6f8f7; color: #7b8581;
+      font-size: 11px; line-height: 1.25;
+    }
+    .step-row.active { background: #e8f5ef; color: #26734f; font-weight: 800; }
+    .step-row.done { color: #397e61; }
+    .scene-box {
+      position: relative; margin-top: 12px; overflow: hidden; border: 1px solid #dce4e0;
+      border-radius: 14px; background: #fbfcfb;
+    }
+    #stageSvg { display: block; width: 100%; min-height: 360px; touch-action: none; }
+    .chromosome-choice {
+      display: flex; width: 118px; min-height: 93px; flex-direction: column; align-items: center;
+      justify-content: center; border: 1px solid #d7e1dc; border-radius: 12px; background: #fff;
+      box-shadow: 0 2px 7px #0000000a; cursor: grab; transition: .15s ease; touch-action: none;
+    }
+    .chromosome-choice:hover { border-color: #378d68; background: #f2fbf6; transform: translateY(-2px); }
+    .chromosome-choice:active { cursor: grabbing; }
+    .chromosome-choice svg { width: 78px; height: 57px; pointer-events: none; }
+    .chromosome-choice span { margin-top: 2px; color: #58655f; font-size: 10px; font-weight: 800; pointer-events: none; }
+    /* 보관함 영역 높이 고정: 염색체 버튼이 없는 단계(간기·후기 I·후기 II)에서도
+       .chromosome-choice 한 개 분량의 높이를 유지해 하단 버튼 위치가 흔들리지 않게 함 */
+    #bankItems {
+      min-height: 93px;
+      align-content: center;
+      align-items: center;
+    }
+    .feedback { min-height: 24px; margin-top: 9px; font-size: 12px; font-weight: 800; }
+    .ok { color: #2c8b61; } .bad { color: #b04b47; }
+    .placed { cursor: grab; pointer-events: all; } .placed:active { cursor: grabbing; }
+    .spindle-short { stroke: #9fc4af; stroke-width: 3; stroke-linecap: round; }
+    .spindle-line { stroke: #79ad92; stroke-width: 4; stroke-linecap: round; }
+    .spindle-line.attached { stroke: #3a956d; stroke-width: 4.5; }
+    .spindle-handle { cursor: grab; pointer-events: all; filter: drop-shadow(0 2px 2px #31574433); }
+    .spindle-handle:active { cursor: grabbing; }
+    .centromere-target { animation: centromerePulse 1.25s ease-in-out infinite; }
+    @keyframes centromerePulse { 0%,100% { stroke-width: 4; } 50% { stroke-width: 7; } }
+    .separate-blue { animation: blueSeparate 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    .separate-orange { animation: orangeSeparate 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    .final-blue { transform: translateX(-62px); }
+    .final-orange { transform: translateX(62px); }
+    .contract-left { animation: contractLeft 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    .contract-right { animation: contractRight 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    @keyframes blueSeparate { from { transform: translateX(0); } to { transform: translateX(-62px); } }
+    @keyframes orangeSeparate { from { transform: translateX(0); } to { transform: translateX(62px); } }
+    @keyframes contractLeft { to { transform: scaleX(.54); } }
+    @keyframes contractRight { to { transform: scaleX(.54); } }
+    .contract-left { transform-box: fill-box; transform-origin: left center; }
+    .contract-right { transform-box: fill-box; transform-origin: right center; }
+    .chromatid-moving-left { animation: pullLeft 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    .chromatid-moving-right { animation: pullRight 1.25s cubic-bezier(.22,.8,.28,1) forwards; }
+    .chromatid-final-left { transform: translateX(-58px); }
+    .chromatid-final-right { transform: translateX(58px); }
+    @keyframes pullLeft { to { transform: translateX(-58px); } }
+    @keyframes pullRight { to { transform: translateX(58px); } }
+    .history-item {
+      width: 100%; cursor: pointer; border: 1px solid #dce4e0; border-radius: 9px; padding: 8px;
+      background: #fafcfa; text-align: left; transition: .15s ease;
+    }
+    .history-item:hover { border-color: #6c9b82; box-shadow: 0 3px 10px #00000012; }
+    .history-dot {
+      display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center;
+      border: 1px solid #cfe3d7; border-radius: 50%; background: #edf7f1; color: #31815e;
+      font-size: 12px; font-weight: 900;
+    }
+    .modal { display: none; position: fixed; inset: 0; z-index: 50; }
+    .modal.show { display: block; }
+    .modal-backdrop { position: absolute; inset: 0; background: #10201899; backdrop-filter: blur(2px); }
+    .modal-box {
+      position: absolute; top: 50%; left: 50%; width: min(760px, 92vw); max-height: 88%;
+      overflow: auto; transform: translate(-50%, -50%); border-radius: 18px; background: #fff;
+      padding: 18px; box-shadow: 0 18px 60px #0005;
+    }
+    /* 드래그 잔상(고스트): 박스 없이 염색체 실루엣만 커서를 따라 이동하며,
+       유효/무효 위치에 따라 실루엣을 감싸는 얇은 외곽선 색이 바뀜.
+       크기는 JS(createDragGhost)에서 스테이지 배율에 맞춰 인라인으로 지정합니다. */
+    .drag-ghost {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 100;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+    .drag-ghost svg {
+      display: block;
+      opacity: .96;
+      filter: url(#ghostOutlineNeutral);
+      transition: filter .12s ease;
+    }
+    .drag-ghost.drag-ghost--valid svg { filter: url(#ghostOutlineValid); }
+    .drag-ghost.drag-ghost--invalid svg { filter: url(#ghostOutlineInvalid); }
+    @media (max-width: 1050px) { .layout-grid { grid-template-columns: 1fr; } .side-panel { display: none; } }
+    @media (max-width: 620px) {
+      .app-shell { padding: 10px; } .header-inner { padding: 18px !important; }
+      .control-row { flex-direction: column; } #stageSvg { min-height: 285px; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.577.0/dist/umd/lucide.min.js" type="text/javascript"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.17" type="text/javascript"></script>
+ </head>
+ <body data-template-id="__page-root">
+  <!-- 드래그 고스트에 사용할 SVG 외곽선 필터 정의 (화면에는 보이지 않음) -->
+  <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="ghostOutlineNeutral" x="-50%" y="-50%" width="200%" height="200%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="thicken"/>
+        <feFlood flood-color="#8fa79b" result="color"/>
+        <feComposite in="color" in2="thicken" operator="in" result="outline"/>
+        <feMerge>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <filter id="ghostOutlineValid" x="-50%" y="-50%" width="200%" height="200%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="thicken"/>
+        <feFlood flood-color="#2c8b61" result="color"/>
+        <feComposite in="color" in2="thicken" operator="in" result="outline"/>
+        <feMerge>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <filter id="ghostOutlineInvalid" x="-50%" y="-50%" width="200%" height="200%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="thicken"/>
+        <feFlood flood-color="#c0433d" result="color"/>
+        <feComposite in="color" in2="thicken" operator="in" result="outline"/>
+        <feMerge>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
+  <div class="app-shell">
+   <div class="app-content">
+    <header data-template-id="header-panel" class="canva-header header-inner rounded-[18px] bg-white p-[22px] text-center shadow-sm">
+     <h1 data-template-id="page-title" class="canva-text font-black">감수분열 염색체 이동 시뮬레이터</h1>
+     <p data-template-id="page-subtitle" class="canva-text mt-2">단계별로 염색체를 직접 배치하며 감수분열 과정을 학습해 보세요.</p>
+    </header>
+    <div class="layout-grid">
+     <aside data-template-id="progress-card" class="canva-sidebar side-panel card-base bg-white">
+      <h2 data-template-id="progress-heading" class="canva-text mb-2 font-black">진행 단계</h2>
+      <div class="mb-1 flex justify-between text-[10px] font-extrabold"><span id="stepText">1 / 10</span><span id="percent">0%</span>
+      </div>
+      <div class="progress-track">
+       <div id="progress" class="progress-bar"></div>
+      </div>
+      <div id="stepList" class="mt-3 grid gap-[6px]"></div>
+      <hr class="my-4 border-0 border-t border-[#e4eae7]">
+      <p data-template-id="progress-helper" class="canva-text text-[11px] leading-relaxed">각 단계를 완료하면 자동으로 기록됩니다.</p>
+     </aside>
+     <main data-template-id="main-panel" class="canva-panel card-base bg-white">
+      <div class="flex items-start justify-between gap-4">
+       <div>
+        <h2 id="stageTitle" class="text-[22px] font-black text-[#253d68]"></h2>
+        <p id="stageSub" class="mt-1 text-[12px] text-[#78837e]"></p>
+       </div><span id="badge" class="rounded-full bg-[#eef4ff] px-3 py-1.5 text-[11px] font-extrabold text-[#37649a]"></span>
+      </div>
+      <div data-template-id="instruction-panel" class="canva-banner mt-3 rounded-xl border border-[#e1e8e4] bg-[#f8faf9] px-3 py-2.5 text-[13px] leading-relaxed"><span id="instruction"></span>
+      </div>
+      <div id="scene" class="scene-box" aria-label="염색체 조작 영역"></div>
+      <section data-template-id="bank-panel" class="canva-panel mt-3 rounded-[13px] border border-dashed border-[#bccdc6] bg-[#f8fafb] p-3 text-center">
+       <h3 data-template-id="bank-heading" class="canva-text mb-2 font-black">보관함</h3>
+       <div id="bankItems" class="flex flex-wrap justify-center gap-3"></div>
+       <p id="bankHint" class="mt-2 text-[11px] text-[#73817a]"></p>
+      </section>
+      <div id="feedback" class="feedback" aria-live="polite"></div>
+      <div class="control-row mt-2 flex justify-between gap-3">
+       <div class="flex gap-2"><button data-template-id="previous-button" id="prev" type="button" class="canva-button rounded-[10px] bg-[#e8eef5] px-3 py-2 text-[12px] font-black text-[#355a7d]">← 이전 단계</button> <button data-template-id="reset-button" id="reset" type="button" class="canva-button rounded-[10px] bg-[#edf1ef] px-3 py-2 text-[12px] font-black text-[#48564f]">현재 단계 다시하기</button>
+       </div><button data-template-id="next-button" id="next" type="button" class="canva-button rounded-[10px] bg-[#328b64] px-4 py-2 text-[12px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40">다음 단계 →</button>
+      </div>
+     </main>
+     <aside data-template-id="history-panel" class="canva-sidebar side-panel card-base bg-white">
+      <h2 data-template-id="history-heading" class="canva-text mb-2 font-black">완료한 단계</h2>
+      <div id="history" class="grid max-h-[720px] gap-2 overflow-auto"></div>
+     </aside>
+    </div>
+    <section data-template-id="final-panel" id="final" class="canva-section mt-[14px] hidden rounded-2xl border border-[#dbe3df] bg-white p-4">
+     <h2 data-template-id="final-heading" class="canva-text mb-1 font-black">모든 단계를 완료했습니다</h2>
+     <p data-template-id="final-description" class="canva-text mb-3 text-[12px]">아래에서 각 단계별로 완성한 결과를 다시 확인할 수 있습니다.</p>
+     <div id="finalGrid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"></div><div class="mt-3 flex flex-wrap gap-2"><button data-template-id="restart-button" id="restart" type="button" class="canva-button rounded-[10px] bg-[#edf1ef] px-4 py-2 text-[12px] font-black text-[#48564f]">처음부터 다시하기</button><button id="saveFinalResult" type="button" class="canva-button rounded-[10px] bg-[#328b64] px-4 py-2 text-[12px] font-black text-white">완성 결과 저장하기</button></div>
+    </section>
+   </div>
+  </div>
+  <div id="historyModal" class="modal" aria-hidden="true">
+   <div id="modalBackdrop" class="modal-backdrop"></div>
+   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><button id="modalClose" type="button" class="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-[#eef2ef] text-xl text-[#46544d]" aria-label="닫기">×</button>
+    <h2 id="modalTitle" class="pr-10 text-xl font-black text-[#254d82]"></h2>
+    <p id="modalSub" class="mb-3 mt-1 text-[12px] text-[#78837e]"></p>
+    <div id="modalScene" class="rounded-xl border border-[#dbe4df] bg-[#fbfcfb] p-2"></div>
+   </div>
+  </div>
+  <script>
+    const stages = [
+      ["간기", "제1분열", "DNA가 복제되어 양이 2배로 늘어나지만 염색체가 뚜렷하게 보이지 않는다.", "interphase", 0],
+      ["전기 I", "제1분열", "핵막이 사라지고, 상동염색체가 결합하여 2가 염색체가 나타난다.", "prophase", 1],
+      ["중기 I", "제1분열", "결합한 상동 염색체가 세포 가운데(적도판)에 배열한다.", "meta1", 1],
+      ["후기 I", "제1분열", "상동염색체가 분리되고, 각 염색체가 세포 양쪽 끝으로 이동한다.", "ana1", 0],
+      ["말기 I", "제1분열", "핵막이 나타나고 세포질 분열이 일어나 2개의 딸세포가 형성되나 염색체는 염색사로 풀리지 않는다.", "telo1", 2],
+      ["전기 II", "제2분열", "각 세포에 2개의 염색 분체로 이루어진 염색체가 존재하고, 핵막이 사라진다.", "prophase2", 2],
+      ["중기 II", "제2분열", "염색체가 세포 가운데(적도판)에 배열한다.", "meta2", 2],
+      ["후기 II", "제2분열", "각 염색체의 염색 분체가 분리되어 세포 양쪽 끝으로 이동한다.", "ana2", 0],
+      ["말기 II", "제2분열", "핵막이 나타나고 세포질 분열이 일어나 딸세포 네 개가 만들어 진다.", "telo2", 4],
+      ["생식세포 형성", "제2분열", "딸세포는 생식세포(정자, 난자)가 된다.", "gamete", 4]
+    ];
+
+    const $ = id => document.getElementById(id);
+
+    // 후기 II ~ 말기 II 관련 이동/인식 거리 상수
+    // ANA2_OFFSET: 염색분체가 세포 중심에서 최종적으로 벌어지는 거리(과거 62px → 58px로 축소)
+    // ANA2_FIBER_OFFSET: 후기 II 방추사가 도달하는 거리(과거 78px → 74px로 축소)
+    // 두 값을 함께 줄여, 커진 핵막(반지름 54)이 세포질 경계 밖으로 나가지 않도록 여유를 확보합니다.
+    const ANA2_OFFSET = 58;
+    const ANA2_FIBER_OFFSET = 74;
+    // 핵막을 유효하게 씌운 것으로 인식하는 반경(사전 스냅 없이, 드롭 지점이 이 반경 안이면 유효 처리)
+    const MEMBRANE_CAPTURE_RADIUS = 50;
+
+    let stage = 0;
+    let placements = [];
+    let meta1Placements = [];
+    let meta2Placements = [];
+    let history = [];
+    let activeDrag = null;
+    let spindleState = { ana1Left: false, ana1Right: false, leftCellLeft: false, leftCellRight: false, rightCellLeft: false, rightCellRight: false };
+    let animatedCells = { ana1: false, leftCell: false, rightCell: false };
+
+    function cell(x, y, radius, indented = false) {
+      if (!indented) return `<circle cx="${x}" cy="${y}" r="${radius}" fill="#fff9d8" stroke="#c9bd75" stroke-width="3"/>`;
+      return `<path d="
+    M ${x} ${y-radius*.72}
+    C ${x+radius*.62} ${y-radius*.86} ${x+radius} ${y-radius*.58} ${x+radius} ${y}
+    C ${x+radius} ${y+radius*.58} ${x+radius*.62} ${y+radius*.86} ${x} ${y+radius*.72}
+    C ${x-radius*.62} ${y+radius*.86} ${x-radius} ${y+radius*.58} ${x-radius} ${y}
+    C ${x-radius} ${y-radius*.58} ${x-radius*.62} ${y-radius*.86} ${x} ${y-radius*.72}
+    Z"
+    fill="#fff9d8" stroke="#c9bd75" stroke-width="3"/>`;
+}
+
+    function chromosome(type) {
+      const blue = "#2e82bd", orange = "#e56b32";
+      if (type === "pair") {
+        return `<g fill="none" stroke-linecap="round">
+          <g stroke="${blue}" stroke-width="7"><path d="M-55 -33 L-7 0 L-55 33"/><path d="M-41 -33 L6 0 L-41 33"/></g>
+          <g stroke="${orange}" stroke-width="7"><path d="M55 -33 L7 0 L55 33"/><path d="M41 -33 L-6 0 L41 33"/></g>
+        </g>`;
+      }
+      if (type === "blue" || type === "orange") {
+        const color = type === "blue" ? blue : orange;
+        return `<g fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"><path d="M-27 -35 L27 35 M27 -35 L-27 35"/><circle cx="0" cy="0" r="5" fill="#fff" stroke="${color}" stroke-width="2"/></g>`;
+      }
+      if (type === "membrane") {
+        // 반투명 채움 + 점선 테두리: 안쪽 염색체가 비쳐 보이도록 함
+        // 반지름을 48 → 54로 확대해 염색체 가장자리에 너무 딱 맞지 않도록 여유를 둠
+        return `<circle cx="0" cy="0" r="54" fill="#f5e4d6" fill-opacity="0.10" stroke="#d2ad8e" stroke-width="4" stroke-dasharray="7 6"/>`;
+      }
+      const color = type === "singleBlue" ? blue : orange;
+      return `<path d="M0 -34 C-4 -16 4 16 0 34" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/>`;
+    }
+
+    function mini(type) {
+      // 핵막은 반지름이 커져 기존 viewBox(-75 -50 150 100)에서 위아래가 살짝 잘리므로
+      // 보관함 아이콘용 viewBox를 별도로 넓혀 잘리지 않게 합니다.
+      const box = type === "membrane" ? "-70 -60 140 120" : "-75 -50 150 100";
+      return `<svg viewBox="${box}" aria-hidden="true">${chromosome(type)}</svg>`;
+    }
+    function placedGraphic(item) { return `<g class="placed" data-placement-id="${item.id}" transform="translate(${item.x} ${item.y})">${chromosome(item.type)}</g>`; }
+    function spindlePole(x, y) { return `<g><circle cx="${x}" cy="${y}" r="15" fill="#e7eee9" stroke="#6e9782" stroke-width="3"/><circle cx="${x}" cy="${y}" r="5" fill="#4f8f6d"/></g>`; }
+    function shortSpindle(x1, y1, x2, y2) { return `<line class="spindle-short" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; }
+
+    function middleSpindleScene(cellX, cellY, radius) {
+      const l = cellX - radius + 18, r = cellX + radius - 18;
+      return `${spindlePole(l, cellY)}${spindlePole(r, cellY)}${shortSpindle(l + 13, cellY, l + 67, cellY)}${shortSpindle(r - 13, cellY, r - 67, cellY)}`;
+    }
+
+    function fiber(key, startX, startY, targetX, targetY, attached) {
+      const isLeft = key.endsWith("Left");
+      const initialX = isLeft ? startX + 48 : startX - 48;
+      const endX = attached ? targetX : initialX;
+      return `<g>
+        <line class="spindle-line ${attached ? "attached" : ""}" x1="${startX}" y1="${startY}" x2="${endX}" y2="${targetY}"/>
+        ${attached
+          ? ``
+          : `<circle class="spindle-handle" data-fiber-key="${key}" cx="${endX}" cy="${targetY}" r="11" fill="#ef3038" stroke="#ffffff" stroke-width="3" tabindex="0" role="button" aria-label="빨간 점을 동원체로 드래그"/>`}
+      </g>`;
+    }
+
+    function meta1AnaphaseScene() {
+      const done = spindleState.ana1Left && spindleState.ana1Right;
+      const animBlue = done && animatedCells.ana1 ? "separate-blue" : "";
+      const animOrange = done && animatedCells.ana1 ? "separate-orange" : "";
+      return `
+        ${cell(400,190,150)}
+        ${spindlePole(266,190)}${spindlePole(534,190)}
+        ${done ? `
+          <line x1="266" y1="190" x2="${animatedCells.ana1 ? "338" : "338"}" y2="190" stroke="#3a956d" stroke-width="4.5" stroke-linecap="round">
+            ${animatedCells.ana1 ? '<animate attributeName="x2" from="400" to="338" dur="1.25s" calcMode="spline" keyTimes="0;1" keySplines=".22 .8 .28 1" fill="freeze"/>' : ''}
+          </line>
+          <line x1="534" y1="190" x2="${animatedCells.ana1 ? "462" : "462"}" y2="190" stroke="#3a956d" stroke-width="4.5" stroke-linecap="round">
+            ${animatedCells.ana1 ? '<animate attributeName="x2" from="400" to="462" dur="1.25s" calcMode="spline" keyTimes="0;1" keySplines=".22 .8 .28 1" fill="freeze"/>' : ''}
+          </line>
+        ` : `${fiber("ana1Left",266,190,400,190,spindleState.ana1Left)}${fiber("ana1Right",534,190,400,190,spindleState.ana1Right)}`}
+        <line x1="400" y1="45" x2="400" y2="335" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/>
+        ${done ? `
+          <g transform="translate(400 190)"><g class="${animatedCells.ana1 ? animBlue : "final-blue"}">${chromosome("blue")}</g></g>
+          <g transform="translate(400 190)"><g class="${animatedCells.ana1 ? animOrange : "final-orange"}">${chromosome("orange")}</g></g>
+        ` : `
+          <g transform="translate(400 190)">${chromosome("pair")}<circle class="centromere-target" cx="0" cy="0" r="12" fill="#fff" stroke="#111" stroke-width="4"/></g>
+        `}
+        <text x="400" y="370" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${done ? "상동 염색체가 양쪽 극으로 분리됩니다" : "양쪽 빨간 끝점을 중앙 동원체에 연결하세요"}</text>`;
+    }
+
+    function movingChromatids(cellX, cellY, color, done, animating) {
+      if (!done) return `<g fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"><path d="M${cellX-27} ${cellY-35} L${cellX+27} ${cellY+35} M${cellX+27} ${cellY-35} L${cellX-27} ${cellY+35}"/><circle class="centromere-target" cx="${cellX}" cy="${cellY}" r="12" fill="#fff" stroke="#111" stroke-width="4"/></g>`;
+      return `<g class="${animating ? "chromatid-moving-left" : "chromatid-final-left"}"><path d="M${cellX-16} ${cellY-34} C${cellX-20} ${cellY-16} ${cellX-10} ${cellY+16} ${cellX-16} ${cellY+34}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/><circle cx="${cellX-16}" cy="${cellY}" r="6" fill="#fff" stroke="#111" stroke-width="3"/></g>
+      <g class="${animating ? "chromatid-moving-right" : "chromatid-final-right"}"><path d="M${cellX+16} ${cellY-34} C${cellX+20} ${cellY-16} ${cellX+10} ${cellY+16} ${cellX+16} ${cellY+34}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/><circle cx="${cellX+16}" cy="${cellY}" r="6" fill="#fff" stroke="#111" stroke-width="3"/></g>`;
+    }
+
+    function anaphase2MovingFibers(cellX, cellY, leftPole, rightPole, animating) {
+      const leftTarget = cellX - 16, rightTarget = cellX + 16;
+      const leftFinal = cellX - ANA2_FIBER_OFFSET, rightFinal = cellX + ANA2_FIBER_OFFSET;
+      const leftLine = `<line class="spindle-line attached" x1="${leftPole}" y1="${cellY}" x2="${animating ? leftTarget : leftFinal}" y2="${cellY}">${animating ? `<animate attributeName="x2" from="${leftTarget}" to="${leftFinal}" dur="1.25s" calcMode="spline" keyTimes="0;1" keySplines=".22 .8 .28 1" fill="freeze"/>` : ""}</line>`;
+      const rightLine = `<line class="spindle-line attached" x1="${rightPole}" y1="${cellY}" x2="${animating ? rightTarget : rightFinal}" y2="${cellY}">${animating ? `<animate attributeName="x2" from="${rightTarget}" to="${rightFinal}" dur="1.25s" calcMode="spline" keyTimes="0;1" keySplines=".22 .8 .28 1" fill="freeze"/>` : ""}</line>`;
+      return `${leftLine}${rightLine}`;
+    }
+
+    function anaphase2Scene() {
+      const left = {x:265,y:190}, right = {x:535,y:190}, radius = 135;
+      const lp = left.x-radius+16, lr = left.x+radius-16, rp = right.x-radius+16, rr = right.x+radius-16;
+      const leftDone = spindleState.leftCellLeft && spindleState.leftCellRight;
+      const rightDone = spindleState.rightCellLeft && spindleState.rightCellRight;
+      return `${cell(left.x,left.y,radius)}${cell(right.x,right.y,radius)}
+        ${spindlePole(lp,left.y)}${spindlePole(lr,left.y)}${spindlePole(rp,right.y)}${spindlePole(rr,right.y)}
+        ${leftDone ? anaphase2MovingFibers(left.x,left.y,lp,lr,animatedCells.leftCell) : `${fiber("leftCellLeft",lp,left.y,left.x,left.y,spindleState.leftCellLeft)}${fiber("leftCellRight",lr,left.y,left.x,left.y,spindleState.leftCellRight)}`}
+        ${rightDone ? anaphase2MovingFibers(right.x,right.y,rp,rr,animatedCells.rightCell) : `${fiber("rightCellLeft",rp,right.y,right.x,right.y,spindleState.rightCellLeft)}${fiber("rightCellRight",rr,right.y,right.x,right.y,spindleState.rightCellRight)}`}
+        ${movingChromatids(left.x,left.y,"#2e82bd",leftDone,animatedCells.leftCell)}
+        ${movingChromatids(right.x,right.y,"#e56b32",rightDone,animatedCells.rightCell)}
+        <text x="270" y="360" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${leftDone ? "염색분체 분리 완료" : "양쪽 방추사를 연결"}</text>
+        <text x="540" y="360" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${rightDone ? "염색분체 분리 완료" : "양쪽 방추사를 연결"}</text>`;
+    }
+
+    function nuclearMembrane(cx, cy, r) {
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f5e4d6" stroke="#d2ad8e" stroke-width="2" stroke-dasharray="5 5"/>`;
+    }
+
+    // 핵막을 씌울 대상 좌표 목록. 말기 I은 후기 I 최종 위치(±62), 말기 II는 후기 II 최종 위치(±ANA2_OFFSET)를 그대로 사용합니다.
+    function membraneTargetsFor(sceneType) {
+      if (sceneType === "telo1") return [{x:338,y:190},{x:462,y:190}];
+      if (sceneType === "telo2") return [
+        {x:265-ANA2_OFFSET,y:190},
+        {x:265+ANA2_OFFSET,y:190},
+        {x:535-ANA2_OFFSET,y:190},
+        {x:535+ANA2_OFFSET,y:190}
+      ];
+      return [];
+    }
+
+    // 주어진 좌표(x,y)에서 반경(radius) 이내의 가장 가까운 target 인덱스를 반환합니다(없으면 -1).
+    // 스냅 없이, "어느 목표 자리 위에 놓였는가"만 판정하는 용도로 사용합니다.
+    function nearestTargetIndex(targets, x, y, radius) {
+      let best = -1, bestDist = radius;
+      targets.forEach((pos, index) => {
+        const d = Math.hypot(x - pos.x, y - pos.y);
+        if (d < bestDist) { bestDist = d; best = index; }
+      });
+      return best;
+    }
+
+    function telo1Scene() {
+      if (stage !== 4) return `${cell(400,190,150,true)}`;
+
+      // 말기 I: 후기 I에서 이동한 염색체 위로 핵막을 드래그해 씌웁니다.
+      // 깜빡이는 가이드는 두지 않고, 드래그 중인 핵막 고스트의 초록/빨강 테두리로만 유효 여부를 안내합니다.
+      // 드롭 위치는 사전 세팅된 좌표로 스냅되지 않고, 실제 놓은 지점 그대로 고정됩니다.
+      const targets = membraneTargetsFor("telo1");
+      const takenIdx = placements.map(p => nearestTargetIndex(targets, p.x, p.y, MEMBRANE_CAPTURE_RADIUS));
+      const allCovered = targets.every((_, index) => takenIdx.includes(index));
+
+      return `
+        ${cell(400,190,150,true)}
+        <g transform="translate(${targets[0].x} ${targets[0].y})">${chromosome("blue")}</g>
+        <g transform="translate(${targets[1].x} ${targets[1].y})">${chromosome("orange")}</g>
+        <text x="400" y="355" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${allCovered ? "핵막이 각각 형성되었습니다" : "핵막을 각 염색체 위로 드래그하세요"}</text>
+      `;
+    }
+
+    function telo2Scene() {
+      // 말기 II: 후기 II에서 분리된 염색분체가 그대로 남아 있고, 그 위로 핵막을 하나씩 드래그해 씌웁니다.
+      // 말기 I과 동일하게 깜빡이는 가이드 없이, 드래그 중 초록/빨강 테두리로만 유효 여부를 안내합니다.
+      const targets = membraneTargetsFor("telo2");
+      const takenIdx = placements.map(p => nearestTargetIndex(targets, p.x, p.y, MEMBRANE_CAPTURE_RADIUS));
+      const allCovered = targets.every((_, index) => takenIdx.includes(index));
+
+      return `
+        ${cell(265,190,135,true)}
+        ${cell(535,190,135,true)}
+        <g transform="translate(${targets[0].x} ${targets[0].y})">${chromosome("singleBlue")}</g>
+        <g transform="translate(${targets[1].x} ${targets[1].y})">${chromosome("singleBlue")}</g>
+        <g transform="translate(${targets[2].x} ${targets[2].y})">${chromosome("singleOrange")}</g>
+        <g transform="translate(${targets[3].x} ${targets[3].y})">${chromosome("singleOrange")}</g>
+        <text x="270" y="340" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${allCovered ? "핵막이 형성되었습니다" : "핵막을 각 염색분체 위로 드래그하세요"}</text>
+        <text x="540" y="340" text-anchor="middle" font-size="13" font-weight="800" fill="#638071">${allCovered ? "핵막이 형성되었습니다" : "핵막을 각 염색분체 위로 드래그하세요"}</text>
+      `;
+    }
+
+    function buildScene() {
+      const type = stages[stage][3];
+      let output = `<svg id="stageSvg" viewBox="0 0 800 390" xmlns="http://www.w3.org/2000/svg" aria-label="감수분열 단계 그림"><rect width="800" height="390" fill="#fbfcfb"/>`;
+
+      if (type === "interphase") output += `${cell(400,190,150)}<circle cx="400" cy="190" r="108" fill="#f3dfcc" stroke="#d1aa8b" stroke-width="2"/><text x="400" y="195" text-anchor="middle" font-size="15" fill="#8c786a">핵</text>`;
+      if (type === "prophase") output += `${cell(400,190,150)}<circle cx="400" cy="190" r="108" fill="#f5e4d6" stroke="#d2ad8e" stroke-width="2" stroke-dasharray="5 5"/>`;
+      if (type === "meta1") output += `${cell(400,190,150)}${middleSpindleScene(400,190,150)}<line x1="400" y1="45" x2="400" y2="335" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/><text x="400" y="25" text-anchor="middle" font-size="13" font-weight="800" fill="#718079">적도판 · 방추사 형성</text><text x="405" y="370" text-anchor="middle" font-size="13" font-weight="600" fill="#718079">염색체를 적도판으로 드래그하세요</text>`;
+      if (type === "ana1") output += meta1AnaphaseScene();
+      if (type === "telo1") output += telo1Scene();
+      if (type === "prophase2") output += `${cell(265,190,135)}${cell(535,190,135)}`;
+      if (type === "meta2") output += `${cell(265,190,135)}${cell(535,190,135)}${middleSpindleScene(265,190,135)}${middleSpindleScene(535,190,135)}<line x1="265" y1="72" x2="265" y2="308" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/><line x1="535" y1="72" x2="535" y2="308" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/><text x="400" y="35" text-anchor="middle" font-size="13" font-weight="800" fill="#718079">두 적도판 위에 염색체를 드래그하세요</text>`;
+      if (type === "ana2") output += anaphase2Scene();
+      if (type === "telo2") output += telo2Scene();
+      if (type === "gamete") [[100,190],[300,190],[500,190],[700,190]].forEach((p,i) => output += `${cell(p[0],p[1],80)}${nuclearMembrane(p[0],p[1],46)}<text x="${p[0]}" y="${p[1]+96}" text-anchor="middle" font-size="11" fill="#6f7b76">생식세포 ${i+1}</text>`);
+
+      if (!["ana1","ana2"].includes(type)) placements.forEach(item => output += placedGraphic(item));
+      output += `</svg>`;
+      return output;
+    }
+
+    function availableTypes() {
+      if (stage === 1 || stage === 2) return [["pair","2가 염색체"]];
+      if (stage === 4 || stage === 8) return [["membrane","핵막"]];
+      if (stage === 5 || stage === 6) return [["blue","파란 복제 염색체"],["orange","주황 복제 염색체"]];
+      if (stage === 9) return [["singleBlue","파란 염색분체"],["singleOrange","주황 염색분체"]];
+      return [];
+    }
+
+    function resetSpindles() {
+      spindleState = { ana1Left:false, ana1Right:false, leftCellLeft:false, leftCellRight:false, rightCellLeft:false, rightCellRight:false };
+      animatedCells = { ana1:false, leftCell:false, rightCell:false };
+    }
+
+    function stageComplete() {
+      if (stage === 0) return true;
+      if (stage === 3) return spindleState.ana1Left && spindleState.ana1Right && !animatedCells.ana1;
+      if (stage === 7) return spindleState.leftCellLeft && spindleState.leftCellRight && spindleState.rightCellLeft && spindleState.rightCellRight;
+      return placements.length === stages[stage][4];
+    }
+
+    function feedback(text, good) {
+      $("feedback").textContent = text;
+      $("feedback").className = `feedback ${good ? "ok" : "bad"}`;
+    }
+
+    function render() {
+      const current = stages[stage];
+      $("stageTitle").textContent = current[0];
+      $("stageSub").textContent = `${current[1]} · ${stage+1}단계 / ${stages.length}단계`;
+      $("badge").textContent = current[1];
+      $("instruction").textContent = current[2];
+      $("stepText").textContent = `${stage+1} / ${stages.length}`;
+      $("percent").textContent = `${Math.round(stage / stages.length * 100)}%`;
+      $("progress").style.width = `${stage / stages.length * 100}%`;
+      $("stepList").innerHTML = stages.map((item,index) => `<div class="step-row ${index===stage?"active":""} ${history[index]?"done":""}">${index+1}. ${item[1]} · ${item[0]}</div>`).join("");
+      $("scene").innerHTML = buildScene();
+      renderBank();
+      $("next").disabled = !stageComplete();
+      $("prev").disabled = stage === 0;
+      bindSceneEvents();
+    }
+
+    function renderBank() {
+      const items = availableTypes();
+      $("bankItems").innerHTML = items.map(([type,label]) => `<button type="button" class="chromosome-choice" data-type="${type}" aria-label="${label}을 드래그해 배치">${mini(type)}<span>${label}</span></button>`).join("");
+      if (stage === 3 || stage === 7) $("bankHint").textContent = "빨간 점을 누른 채 흰색 동원체까지 드래그하세요.";
+      else if (stage === 4 || stage === 8) $("bankHint").textContent = "핵막을 염색체(분체) 위의 알맞은 위치로 드래그해 씌우세요.";
+      else if (items.length) $("bankHint").textContent = "염색체 모형을 누른 채 세포 안의 알맞은 위치로 드래그하세요.";
+      else $("bankHint").textContent = "이 단계는 그림을 관찰한 뒤 다음 단계로 진행하세요.";
+      document.querySelectorAll(".chromosome-choice").forEach(el => el.addEventListener("pointerdown", startBankDrag));
+    }
+
+    function svgPointFromEvent(svg,event) {
+      const point = svg.createSVGPoint(); point.x = event.clientX; point.y = event.clientY;
+      const matrix = svg.getScreenCTM();
+      return matrix ? point.matrixTransform(matrix.inverse()) : {x:400,y:195};
+    }
+
+    // #stageSvg의 viewBox 1단위가 실제 화면에서 몇 px인지 구합니다.
+    // getScreenCTM()은 viewBox 스케일 + 현재 렌더 크기를 모두 반영하므로
+    // 드래그 시작 시점의 정확한 배율을 얻을 수 있습니다.
+    function getStageScale() {
+      const svg = $("stageSvg");
+      if (!svg) return 1;
+      const ctm = svg.getScreenCTM();
+      return ctm ? ctm.a : 1;
+    }
+
+    function isValidPlacement(type,x,y) {
+      if (placements.length >= stages[stage][4]) return false;
+      if (stage === 1) return type === "pair" && Math.hypot(x-400,y-190) < 125;
+      if (stage === 2) return type === "pair" && Math.abs(x-400) < 70 && y > 90 && y < 285;
+      if (stage === 4 || stage === 8) {
+        // 핵막 배치: 사전에 정해둔 정확한 좌표로 스냅하지 않고,
+        // 드롭 지점이 대상 염색체(분체) 근처(인식 반경 이내)이고 아직 다른 핵막이 그 자리를 차지하지 않았다면 유효합니다.
+        if (type !== "membrane") return false;
+        const targets = membraneTargetsFor(stages[stage][3]);
+        const idx = nearestTargetIndex(targets, x, y, MEMBRANE_CAPTURE_RADIUS);
+        if (idx === -1) return false;
+        const takenIdx = placements.map(p => nearestTargetIndex(targets, p.x, p.y, MEMBRANE_CAPTURE_RADIUS));
+        return !takenIdx.includes(idx);
+      }
+      if (stage === 5) return (type === "blue" && x < 400) || (type === "orange" && x > 400);
+      if (stage === 6) return ((type === "blue" && x < 400) || (type === "orange" && x > 400)) && (Math.hypot(x-225,y-190)<118 || Math.hypot(x-575,y-190)<118);
+      if (stage === 9) return (x>25 && x<175 && y>95 && y<285) || (x>225 && x<375 && y>95 && y<285) || (x>425 && x<575 && y>95 && y<285) || (x>625 && x<775 && y>95 && y<285);
+      return false;
+    }
+
+    // 핵막을 포함한 모든 배치는 이제 사전 세팅된 좌표로 스냅하지 않고,
+    // 실제로 드롭한 지점(x, y)을 그대로 최종 위치로 사용합니다.
+    function resolvePlacementPosition(type, x, y) {
+      return { x, y };
+    }
+
+    function bindSceneEvents() {
+      const svg = $("stageSvg");
+      if (!svg) return;
+      svg.querySelectorAll(".placed").forEach(el => el.addEventListener("pointerdown", startPlacedDrag));
+      svg.querySelectorAll(".spindle-handle").forEach(handle => {
+        handle.addEventListener("pointerdown", startFiberDrag);
+        handle.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); connectFiber(handle.dataset.fiberKey); }
+        });
+      });
+    }
+
+    // ---- 드래그 잔상(고스트) 헬퍼 ----
+    function createDragGhost(type, event) {
+      const ghost = document.createElement("div");
+      ghost.className = "drag-ghost";
+      ghost.innerHTML = mini(type);
+
+      // mini()의 viewBox는 chromosome() 도형과 동일한 좌표 단위를 쓰므로,
+      // 스테이지 배율을 곱하면 배치 직후와 동일한 시각적 크기가 됩니다.
+      const scale = getStageScale();
+      const ghostSvg = ghost.querySelector("svg");
+      if (ghostSvg) {
+        const isMembrane = type === "membrane";
+        const baseWidth = isMembrane ? 140 : 150;
+        const baseHeight = isMembrane ? 120 : 100;
+        ghostSvg.style.width = `${baseWidth * scale}px`;
+        ghostSvg.style.height = `${baseHeight * scale}px`;
+      }
+
+      ghost.style.left = `${event.clientX}px`;
+      ghost.style.top = `${event.clientY}px`;
+      document.body.appendChild(ghost);
+      return ghost;
+    }
+
+    function updateDragGhost(ghost, event, valid) {
+      if (!ghost) return;
+      ghost.style.left = `${event.clientX}px`;
+      ghost.style.top = `${event.clientY}px`;
+      ghost.classList.toggle("drag-ghost--valid", valid === true);
+      ghost.classList.toggle("drag-ghost--invalid", valid === false);
+    }
+
+    function removeDragGhost(ghost) {
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    }
+
+    function checkPlacementValidity(type, x, y, excludeId) {
+      if (excludeId == null) return isValidPlacement(type, x, y);
+      const saved = placements;
+      placements = placements.filter(entry => entry.id !== excludeId);
+      const result = isValidPlacement(type, x, y);
+      placements = saved;
+      return result;
+    }
+
+    function startBankDrag(event) {
+      event.preventDefault();
+      const type = event.currentTarget.dataset.type;
+      const ghost = createDragGhost(type, event);
+      activeDrag = { mode:"bank", type, ghost };
+      window.addEventListener("pointermove", moveGenericDrag, {passive:false});
+      window.addEventListener("pointerup", endGenericDrag, {once:true});
+      feedback("세포 안의 알맞은 위치에 놓으세요.", true);
+    }
+
+    function startPlacedDrag(event) {
+      event.preventDefault();
+      if (stage === 3 || stage === 7) return;
+      const id = Number(event.currentTarget.dataset.placementId);
+      const item = placements.find(entry => entry.id === id);
+      const ghost = item ? createDragGhost(item.type, event) : null;
+      activeDrag = { mode:"placed", id, ghost };
+      window.addEventListener("pointermove", moveGenericDrag, {passive:false});
+      window.addEventListener("pointerup", endGenericDrag, {once:true});
+    }
+
+    function moveGenericDrag(event) {
+      if (!activeDrag) return;
+      event.preventDefault();
+      const svg = $("stageSvg");
+      let valid;
+      if (svg) {
+        const point = svgPointFromEvent(svg, event);
+        const type = activeDrag.mode === "bank"
+          ? activeDrag.type
+          : (placements.find(entry => entry.id === activeDrag.id) || {}).type;
+        valid = type
+          ? checkPlacementValidity(type, point.x, point.y, activeDrag.mode === "placed" ? activeDrag.id : null)
+          : false;
+      }
+      updateDragGhost(activeDrag.ghost, event, valid);
+    }
+
+    function endGenericDrag(event) {
+      window.removeEventListener("pointermove", moveGenericDrag);
+      if (!activeDrag) return;
+      const drag = activeDrag; activeDrag = null;
+      removeDragGhost(drag.ghost);
+      const svg = $("stageSvg");
+      const point = svgPointFromEvent(svg,event);
+
+      if (drag.mode === "bank") {
+        if (!isValidPlacement(drag.type,point.x,point.y)) { feedback("이 단계에 알맞은 위치에 염색체를 놓아 주세요.", false); return; }
+        const pos = resolvePlacementPosition(drag.type, point.x, point.y);
+        placements.push({id:Date.now()+Math.random(),type:drag.type,x:pos.x,y:pos.y});
+        feedback("좋아요! 배치되었습니다.", true);
+      } else {
+        const item = placements.find(entry => entry.id === drag.id);
+        if (!item) return;
+        const others = placements.filter(entry => entry.id !== item.id);
+        const saved = placements;
+        placements = others;
+        if (isValidPlacement(item.type,point.x,point.y)) {
+          const pos = resolvePlacementPosition(item.type, point.x, point.y);
+          item.x = pos.x; item.y = pos.y; placements.push(item);
+          feedback("위치를 조정했습니다.", true);
+        } else {
+          placements = saved;
+          feedback("이 단계에 알맞은 위치로 옮겨 주세요.", false);
+        }
+      }
+      render();
+    }
+
+    function fiberStartFor(key) {
+      const map = {
+        ana1Left:{x:266,y:190}, ana1Right:{x:534,y:190},
+        leftCellLeft:{x:146,y:190}, leftCellRight:{x:384,y:190},
+        rightCellLeft:{x:416,y:190}, rightCellRight:{x:654,y:190}
+      };
+      return map[key];
+    }
+
+    function fiberTargetFor(key) {
+      if (key.startsWith("ana1")) return {x:400,y:190};
+      // 후기 II에서는 각 세포 중앙의 동원체로 연결을 인식합니다.
+      return key.startsWith("leftCell") ? {x:265,y:190} : {x:535,y:190};
+    }
+
+    function startFiberDrag(event) {
+      event.preventDefault();
+      const handle = event.currentTarget;
+      const key = handle.dataset.fiberKey;
+      const svg = $("stageSvg");
+      const start = fiberStartFor(key);
+      const preview = document.createElementNS("http://www.w3.org/2000/svg","line");
+      preview.setAttribute("stroke","#3a956d"); preview.setAttribute("stroke-width","4"); preview.setAttribute("stroke-linecap","round"); preview.setAttribute("stroke-dasharray","5 5");
+      preview.setAttribute("x1",start.x); preview.setAttribute("y1",start.y); preview.setAttribute("x2",start.x); preview.setAttribute("y2",start.y);
+      svg.appendChild(preview);
+      activeDrag = {mode:"fiber",key,preview};
+      window.addEventListener("pointermove",moveFiberDrag,{passive:false});
+      window.addEventListener("pointerup",endFiberDrag,{once:true});
+    }
+
+    function moveFiberDrag(event) {
+      if (!activeDrag || activeDrag.mode !== "fiber") return;
+      event.preventDefault();
+      const point = svgPointFromEvent($("stageSvg"),event);
+      activeDrag.preview.setAttribute("x2",point.x); activeDrag.preview.setAttribute("y2",point.y);
+    }
+
+    function endFiberDrag(event) {
+      window.removeEventListener("pointermove",moveFiberDrag);
+      if (!activeDrag || activeDrag.mode !== "fiber") return;
+      const drag = activeDrag; activeDrag = null; drag.preview.remove();
+      const point = svgPointFromEvent($("stageSvg"),event);
+      const target = fiberTargetFor(drag.key);
+      if (Math.hypot(point.x-target.x,point.y-target.y) > 35) { feedback("흰색 동원체 원 위에 빨간 점을 놓아 주세요.", false); return; }
+      connectFiber(drag.key);
+    }
+
+    function connectFiber(key) {
+      if (spindleState[key]) { feedback("이미 연결된 방추사입니다.", false); return; }
+      spindleState[key] = true;
+
+      const ana1Done = spindleState.ana1Left && spindleState.ana1Right;
+      const leftDone = spindleState.leftCellLeft && spindleState.leftCellRight;
+      const rightDone = spindleState.rightCellLeft && spindleState.rightCellRight;
+
+      if (key.startsWith("ana1") && ana1Done) {
+        animatedCells.ana1 = true;
+        feedback("양쪽 방추사가 연결되었습니다. 상동 염색체가 양쪽 극으로 분리됩니다!", true);
+        render();
+        window.setTimeout(() => { animatedCells.ana1 = false; render(); }, 1350);
+        return;
+      }
+      if (key.startsWith("leftCell") && leftDone) {
+        animatedCells.leftCell = true;
+        feedback("왼쪽 세포의 양쪽 방추사가 연결되어 염색분체가 분리됩니다!", true);
+        render();
+        window.setTimeout(() => { animatedCells.leftCell = false; render(); }, 1350);
+        return;
+      }
+      if (key.startsWith("rightCell") && rightDone) {
+        animatedCells.rightCell = true;
+        feedback("오른쪽 세포의 양쪽 방추사가 연결되어 염색분체가 분리됩니다!", true);
+        render();
+        window.setTimeout(() => { animatedCells.rightCell = false; render(); }, 1350);
+        return;
+      }
+      feedback("방추사가 동원체에 연결되었습니다. 반대쪽 방추사도 연결하세요.", true);
+      render();
+    }
+
+    function captureCurrentScene() {
+      const svg = $("stageSvg");
+      if (!svg) return null;
+      const copy = svg.cloneNode(true);
+
+      // CSS transforms are not included in serialized SVGs. Bake the completed
+      // 후기 I positions into SVG transform attributes before creating the image.
+      if (stage === 3 && spindleState.ana1Left && spindleState.ana1Right) {
+        const blue = copy.querySelector(".final-blue");
+        const orange = copy.querySelector(".final-orange");
+        if (blue) {
+          blue.setAttribute("transform", "translate(-62 0)");
+          blue.classList.remove("final-blue");
+        }
+        if (orange) {
+          orange.setAttribute("transform", "translate(62 0)");
+          orange.classList.remove("final-orange");
+        }
+      }
+
+      // 후기 II의 최종 염색분체 위치도 CSS transform 대신 SVG 속성으로 고정합니다.
+      // (실제 CSS 이동량인 ANA2_OFFSET과 동일한 값을 사용해야 스냅샷이 화면과 일치합니다.)
+      if (stage === 7 && spindleState.leftCellLeft && spindleState.leftCellRight && spindleState.rightCellLeft && spindleState.rightCellRight) {
+        const finalLeft = copy.querySelectorAll(".chromatid-final-left");
+        const finalRight = copy.querySelectorAll(".chromatid-final-right");
+        finalLeft.forEach(group => {
+          group.setAttribute("transform", `translate(-${ANA2_OFFSET} 0)`);
+          group.classList.remove("chromatid-final-left");
+        });
+        finalRight.forEach(group => {
+          group.setAttribute("transform", `translate(${ANA2_OFFSET} 0)`);
+          group.classList.remove("chromatid-final-right");
+        });
+      }
+
+      // 저장본의 작업용 문구만 제외합니다. 실제 작업 화면의 SVG는 변경하지 않습니다.
+      const prompts = ["드래그하세요", "연결하세요", "방추사를 연결"];
+      copy.querySelectorAll("text").forEach(label => {
+        if (prompts.some(prompt => label.textContent.includes(prompt)) ||
+            (stage === 2 && label.textContent.trim() === "적도판 · 방추사 형성") ||
+            [3, 4, 7, 8, 9].includes(stage)) label.remove();
+      });
+      copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const source = new XMLSerializer().serializeToString(copy);
+      return URL.createObjectURL(new Blob([source], {type:"image/svg+xml;charset=utf-8"}));
+    }
+
+    function snapshot() {
+      let description = "염색체 배치와 단계 관찰을 완료했습니다.";
+      if (stage === 3 || stage === 7) description = "양쪽 방추사를 동원체에 연결하여 염색체가 양극으로 분리되도록 했습니다.";
+      else if (stage === 4) description = "후기 I에서 이동한 염색체 위에 핵막을 씌워 두 개의 딸핵을 완성했습니다.";
+      else if (stage === 8) description = "후기 II에서 분리된 염색분체 위에 핵막을 씌워 네 개의 딸핵을 완성했습니다.";
+
+      history[stage] = {
+        title:stages[stage][0], phase:stages[stage][1], number:stage+1,
+        imageUrl:captureCurrentScene(),
+        description
+      };
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const done = history.filter(Boolean);
+      $("history").innerHTML = done.length ? done.map(item => `<button type="button" class="history-item" data-history="${item.number-1}"><div class="flex items-center gap-2"><div class="history-dot">${item.number}</div><div><div class="text-[11px] font-black text-[#2b473b]">${item.title}</div><div class="mt-0.5 text-[10px] text-[#77827d]">${item.phase} · 크게 보기</div></div></div>${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.title} 단계에서 저장된 염색체 배치" class="mt-2 w-full rounded-lg border border-[#dce4e0] bg-[#fbfcfb]">` : ""}</button>`).join("") : `<p class="text-[11px] text-[#7b8581]">아직 완성한 단계가 없습니다.</p>`;
+      document.querySelectorAll("[data-history]").forEach(button => button.addEventListener("click",() => openHistory(Number(button.dataset.history))));
+    }
+
+    function openHistory(index) {
+      const item = history[index]; if (!item) return;
+      $("modalTitle").textContent = `${item.number}단계 · ${item.title}`;
+      $("modalSub").textContent = `${item.phase} · ${item.description}`;
+      $("modalScene").innerHTML = item.imageUrl
+        ? `<img src="${item.imageUrl}" alt="${item.title} 단계에서 저장된 염색체 배치" class="block w-full rounded-lg border border-[#dbe4df] bg-[#fbfcfb]">`
+        : `<p class="p-6 text-center text-[12px] text-[#78837e]">저장된 이미지가 없습니다.</p>`;
+      $("historyModal").classList.add("show"); $("historyModal").setAttribute("aria-hidden","false");
+    }
+
+    function closeHistory() {
+      $("historyModal").classList.remove("show"); $("historyModal").setAttribute("aria-hidden","true"); $("modalScene").innerHTML = "";
+    }
+
+    $("next").addEventListener("click",() => {
+      if (!stageComplete()) return;
+      if (stage === 2) meta1Placements = placements.map(item => ({...item}));
+      if (stage === 6) meta2Placements = placements.map(item => ({...item}));
+      snapshot();
+
+      if (stage < stages.length-1) {
+        stage++;
+        if (stage === 3) placements = meta1Placements.map(item => ({...item}));
+        else if (stage === 7) placements = meta2Placements.map(item => ({...item}));
+        else placements = [];
+        resetSpindles();
+        feedback("",true);
+        render();
+        return;
+      }
+      $("progress").style.width = "100%"; $("percent").textContent = "100%";
+      $("final").classList.remove("hidden");
+      $("finalGrid").innerHTML = history.filter(Boolean).map(item => `<article class="rounded-xl border border-[#dce4e0] bg-[#fbfcfb] p-3"><div class="flex items-center gap-2"><div class="history-dot">${item.number}</div><div><h3 class="text-[13px] font-black text-[#2b473b]">${item.title}</h3><p class="mt-1 text-[11px] text-[#74807b]">${item.description}</p></div></div>${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.title} 단계에서 저장된 염색체 배치" class="mt-3 w-full rounded-lg border border-[#dce4e0] bg-white">` : ""}</article>`).join("");
+      $("final").scrollIntoView({behavior:"smooth"});
+    });
+
+    $("prev").addEventListener("click",() => {
+      if (stage===0) return;
+      stage--;
+      placements = stage===2 ? meta1Placements.map(item=>({...item})) : stage===6 ? meta2Placements.map(item=>({...item})) : [];
+      resetSpindles(); feedback("",true); render();
+    });
+
+    $("reset").addEventListener("click",() => {
+      if (stage===3) { resetSpindles(); placements = meta1Placements.map(item=>({...item})); }
+      else if (stage===7) { resetSpindles(); placements = meta2Placements.map(item=>({...item})); }
+      else placements = [];
+      render();
+      feedback((stage===3 || stage===7) ? "방추사 연결 상태를 초기화했습니다." : "현재 단계의 배치를 초기화했습니다.",true);
+    });
+
+    $("restart").addEventListener("click",() => {
+      stage=0; placements=[]; meta1Placements=[]; meta2Placements=[]; history=[]; resetSpindles();
+      $("final").classList.add("hidden"); renderHistory(); render();
+    });
+
+    // 최종 요약 자료에만 쓰이는 설명. 따옴표로 감싼 용어는 굵게 그립니다.
+    const finalSummaries = [
+      "'DNA가 복제'되어 '양이 2배'로 늘어나지만\n염색체가 뚜렷하게 보이지 않는다.",
+      "핵막이 사라지고, '상동 염색체'가 결합하여 '2가 염색체'가 나타난다.",
+      "결합한 '상동 염색체'가 세포 가운데(적도판)에 배열한다.",
+      "'상동염색체'가 분리되고, 각 '염색체'가 세포 양쪽 끝으로 이동한다.",
+      "'핵막'이 나타나고 '세포질 분열'이 일어나 2개의 딸세포가 형성되나\n염색체는 염색사로 풀리지 않는다.",
+      "각 세포에 '2개의 염색 분체'로 이루어진 '염색체'가 존재하고,\n핵막이 사라진다.",
+      "'염색체'가 세포 가운데(적도판)에 배열한다.",
+      "각 '염색체'의 '염색 분체'가 분리되어 세포 양쪽 끝으로 이동한다.",
+      "'핵막'이 나타나고 '세포질 분열'이 일어나 딸세포 네 개가 만들어 진다.",
+      "딸세포는 '생식세포(정자, 난자)'가 된다."
+    ];
+
+    // 원문의 공백만 유지합니다. 강조 표현 앞뒤에 임의의 공백을 추가하지 않습니다.
+    function summaryLines(ctx, description, maxWidth) {
+      const words = description.match(/[ \t]*(?:'[^']+'|[^\s']+)|\n/g) || [];
+      const lines = [];
+      let line = [];
+      const measure = tokens => {
+        let width = 0;
+        tokens.forEach(token => {
+          ctx.font = "500 26px 'Noto Sans KR', sans-serif";
+          width += ctx.measureText(token.space).width;
+          const bold = token.bold;
+          ctx.font = `${bold ? 800 : 500} 26px 'Noto Sans KR', sans-serif`;
+          width += ctx.measureText(token.text).width;
+        });
+        return width;
+      };
+      for (const word of words) {
+        if (word === "\n") { if (line.length) lines.push(line); line = []; continue; }
+        const space = word.match(/^[ \t]*/)[0];
+        const raw = word.slice(space.length);
+        const bold = raw.startsWith("'") && raw.endsWith("'");
+        const token = {space: line.length ? space : "", text: bold ? raw.slice(1, -1) : raw, bold};
+        if (line.length && space && measure([...line, token]) > maxWidth) {
+          lines.push(line);
+          line = [];
+          token.space = "";
+        }
+        line.push(token);
+      }
+      if (line.length) lines.push(line);
+      return { lines, measure };
+    }
+
+    async function saveFinalResultImage() {
+      const completed = history.filter(Boolean);
+      if (completed.length !== stages.length || completed.some(item => !item.imageUrl)) {
+        alert("모든 단계의 결과가 완성된 후 저장할 수 있습니다.");
+        return;
+      }
+      await document.fonts.ready;
+      const cols = 5, rows = 2;
+      const panelWidth = 820, panelHeight = 610;
+      const gap = 24, padding = 32;
+      const canvas = document.createElement("canvas");
+      canvas.width = padding * 2 + cols * panelWidth + (cols - 1) * gap;
+      canvas.height = padding * 2 + rows * panelHeight + (rows - 1) * gap;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const loadImage = url => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      try {
+        for (let i = 0; i < completed.length; i++) {
+          const item = completed[i];
+          const x = padding + (i % cols) * (panelWidth + gap);
+          const y = padding + Math.floor(i / cols) * (panelHeight + gap);
+          ctx.fillStyle = "#f8faf9";
+          ctx.fillRect(x, y, panelWidth, panelHeight);
+          ctx.strokeStyle = "#dbe3df";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + 1, y + 1, panelWidth - 2, panelHeight - 2);
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#253d68";
+          ctx.font = "800 34px 'Noto Sans KR', sans-serif";
+          ctx.fillText(`${item.number}. ${item.title}`, x + panelWidth / 2, y + 40);
+
+          const img = await loadImage(item.imageUrl);
+          const imageX = x + 20, imageY = y + 74;
+          const imageW = panelWidth - 40, imageH = 385;
+          const scale = Math.min(imageW / img.naturalWidth, imageH / img.naturalHeight);
+          const drawW = img.naturalWidth * scale, drawH = img.naturalHeight * scale;
+          ctx.drawImage(img, imageX + (imageW - drawW) / 2, imageY + (imageH - drawH) / 2, drawW, drawH);
+
+          const {lines, measure} = summaryLines(ctx, finalSummaries[i], panelWidth - 72);
+          const lineHeight = 38;
+          const firstY = y + 490 + (3 - lines.length) * lineHeight / 2;
+          lines.forEach((tokens, lineIndex) => {
+            let cursor = x + (panelWidth - measure(tokens)) / 2;
+            tokens.forEach(token => {
+              ctx.font = "500 26px 'Noto Sans KR', sans-serif";
+              cursor += ctx.measureText(token.space).width;
+              ctx.font = `${token.bold ? 800 : 500} 26px 'Noto Sans KR', sans-serif`;
+              ctx.fillStyle = "#283d33";
+              ctx.textAlign = "left";
+              ctx.fillText(token.text, cursor, firstY + lineIndex * lineHeight);
+              cursor += ctx.measureText(token.text).width;
+            });
+          });
+        }
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("이미지 생성에 실패했습니다.");
+
+
+        const fileName = `감수분열_완성결과_2n=2_${new Date().toISOString().slice(0,10)}.png`;
+
+        // 지원되는 브라우저에서는 '저장 위치'를 직접 선택할 수 있는 저장 대화상자를 엽니다.
+        if (window.showSaveFilePicker) {
+          try {
+            const handle = await window.showSaveFilePicker({
+              suggestedName: fileName,
+              types: [{
+                description: "PNG 이미지",
+                accept: { "image/png": [".png"] }
+              }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return;
+          } catch (error) {
+            if (error && error.name === "AbortError") return;
+          }
+        }
+
+        // 저장 위치 선택 기능을 지원하지 않는 브라우저에서는 일반 다운로드로 저장합니다.
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (error) {
+        console.error(error);
+        alert("완성 결과 이미지를 저장하는 중 문제가 발생했습니다.");
+      }
+    }
+
+    $("saveFinalResult").addEventListener("click", saveFinalResultImage);
+
+    $("modalClose").addEventListener("click",closeHistory);
+    $("modalBackdrop").addEventListener("click",closeHistory);
+    document.addEventListener("keydown",event => { if (event.key==="Escape") closeHistory(); });
+
+    lucide.createIcons();
+    renderHistory();
+    render();
+  </script>
+ </body>
+</html>
