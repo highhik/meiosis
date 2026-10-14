@@ -242,7 +242,7 @@
       ["중기 II", "제2분열", "염색체가 세포 가운데(적도판)에 배열한다.", "meta2", 2],
       ["후기 II", "제2분열", "각 염색체의 염색 분체가 분리되어 세포 양쪽 끝으로 이동한다.", "ana2", 0],
       ["말기 II", "제2분열", "핵막이 나타나고, 염색체가 염색사로 풀어진다. 세포질 분열이 일어나 딸세포 네 개가 만들어 진다.", "telo2", 4],
-      ["생식세포 형성", "제2분열", "딸세포 4개가 생성되고, 이후 생식세포(정자, 난자)가 된다.", "gamete", 4]
+      ["생식세포 형성", "제2분열", "딸세포는 생식세포(정자, 난자)가 된다.", "gamete", 4]
     ];
 
     const $ = id => document.getElementById(id);
@@ -509,7 +509,7 @@
       const items = availableTypes();
       $("bankItems").innerHTML = items.map(([type,label]) => `<button type="button" class="chromosome-choice" data-type="${type}" aria-label="${label}을 드래그해 배치">${mini(type)}<span>${label}</span></button>`).join("");
       if (stage === 3 || stage === 7) $("bankHint").textContent = "빨간 점을 누른 채 흰색 동원체까지 드래그하세요.";
-      else if (stage === 4 || stage === 8) $("bankHint").textContent = "핵막을 분리된 염색분체 위의 알맞은 위치로 드래그해 씌우세요.";
+      else if (stage === 4 || stage === 8) $("bankHint").textContent = "핵막을 염색체(분체) 위의 알맞은 위치로 드래그해 씌우세요.";
       else if (items.length) $("bankHint").textContent = "염색체 모형을 누른 채 세포 안의 알맞은 위치로 드래그하세요.";
       else $("bankHint").textContent = "이 단계는 그림을 관찰한 뒤 다음 단계로 진행하세요.";
       document.querySelectorAll(".chromosome-choice").forEach(el => el.addEventListener("pointerdown", startBankDrag));
@@ -897,7 +897,7 @@
       "'염색체'가 세포 가운데(적도판)에 배열한다.",
       "각 '염색체'의 '염색 분체'가 분리되어 세포 양쪽 끝으로 이동한다.",
       "'핵막'이 나타나고 '세포질 분열'이 일어나 딸세포 네 개가 만들어 진다.",
-      "딸세포는 이후 '생식세포(정자, 난자)'가 된다."
+      "딸세포는 '생식세포(정자, 난자)'가 된다."
     ];
 
     // 원문의 공백만 유지합니다. 강조 표현 앞뒤에 임의의 공백을 추가하지 않습니다.
