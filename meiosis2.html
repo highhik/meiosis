@@ -449,7 +449,7 @@
 
       if (type === "interphase") output += `${cell(400,190,150)}<circle cx="400" cy="190" r="108" fill="#f3dfcc" stroke="#d1aa8b" stroke-width="2"/><text x="400" y="195" text-anchor="middle" font-size="15" fill="#8c786a">핵</text>`;
       if (type === "prophase") output += `${cell(400,190,150)}<circle cx="400" cy="190" r="108" fill="#f5e4d6" stroke="#d2ad8e" stroke-width="2" stroke-dasharray="5 5"/>`;
-      if (type === "meta1") output += `${cell(400,190,150)}${middleSpindleScene(400,190,150)}<line x1="400" y1="45" x2="400" y2="335" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/><text x="400" y="25" text-anchor="middle" font-size="13" font-weight="800" fill="#718079">적도판 · 방추사 형성</text><text x="405" y="370" text-anchor="middle" font-size="13" font-weight="600" fill="#718079">염색체를 적도판으로 드래그하세요</text>`;
+      if (type === "meta1") output += `${cell(400,190,150)}${middleSpindleScene(400,190,150)}<line x1="400" y1="45" x2="400" y2="335" stroke="#aab8b2" stroke-width="2" stroke-dasharray="6 7"/><text x="400" y="25" text-anchor="middle" font-size="13" font-weight="800" fill="#718079">적도판</text><text x="405" y="370" text-anchor="middle" font-size="13" font-weight="600" fill="#718079">염색체를 적도판으로 드래그하세요</text>`;
       if (type === "ana1") output += meta1AnaphaseScene();
       if (type === "telo1") output += telo1Scene();
       if (type === "prophase2") output += `${cell(265,190,135)}${cell(535,190,135)}`;
@@ -802,7 +802,7 @@
       const prompts = ["드래그하세요", "연결하세요", "방추사를 연결"];
       copy.querySelectorAll("text").forEach(label => {
         if (prompts.some(prompt => label.textContent.includes(prompt)) ||
-            (stage === 2 && label.textContent.trim() === "적도판 · 방추사 형성") ||
+            (stage === 2 && label.textContent.trim() === "적도판") ||
             [3, 4, 7, 8, 9].includes(stage)) label.remove();
       });
       copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
